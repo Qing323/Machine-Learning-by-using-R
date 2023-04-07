@@ -1,0 +1,343 @@
+---
+title: "Assigment 3"
+author: "Qing Li"
+date: "2023-03-27"
+output: html_document
+---
+
+```{r}
+df<- RBootcamp::ames
+qrt <- summary(df$Sale_Price)[5]
+ind<- which(colnames(df) == "Sale_Price")
+df1 <- df[,-ind]
+df1$expensive <- ifelse(df$Sale_Price > qrt,1,0)
+table(df1$expensive)
+```
+
+
+```{r}
+library(skimr)
+colSums(is.na(df1))
+skim(df1)
+```
+
+
+```{r}
+find <- which(sapply(df1, is.factor))
+
+for (i in 1:length(find)) {
+  tabind <-table(df1[,find[i]])
+  ind1 <- which(tabind < 10)
+  bad <- names(ind1)
+  
+  indbad <- which(df1[,find[i]]%in% bad)
+  if(length(indbad) != 0) df1 <- df1[-indbad,]
+}
+```
+
+
+```{r}
+ind2 <- which(sapply(lapply(df1,unique), length) == 1)
+df2 <- df1[, -ind2]
+```
+
+
+
+```{r}
+library(ROCR)
+library(rpart)
+library(caret)
+
+```
+
+
+```{r}
+
+# Single Tree
+
+n = 100
+
+AUC1 <- c()
+
+for (i in 1:n) {
+  set.seed(i * 15)
+  ind <-unique(sample(nrow(df2), nrow(df2), replace = TRUE))
+  train <- df2[ind,]
+  test <- df2[-ind,]
+  
+  #pruned trees
+  model1 <- rpart(expensive ~ ., data = train, method = "class")
+  phat1 <- predict(model1, test, type = "prob")
+  
+ # AUC
+  pred_rocr <- prediction(phat1[, 2], test$expensive)
+  auc_ROCR <- performance(pred_rocr, measure = "auc")
+  AUC1[i] <- auc_ROCR@y.values[[1]]
+
+} 
+
+mean(AUC1)
+sqrt(var(AUC1)*n/(n-1))
+sd(AUC1)
+```
+
+```{r}
+plot(AUC1, col = "grey")
+abline(a=mean(AUC1), b=0, col = "red")
+```
+
+
+```{r}
+library(rattle)
+fancyRpartPlot(model1)
+```
+
+```{r}
+library(rpart.plot)
+prp(model1,type = 2, extra = 1, split.col = "red",
+    split.border.col = "blue", box.col = "pink")
+```
+
+
+```{r}
+
+# Bagging model
+library(PASWR)
+
+n = 100
+B = 10
+
+# 100 Bootstrapping loops for using rpart - AUC
+AUC2 <- c()
+
+for (i in 1:n) {
+  set.seed(i * 15)
+  ind <- unique(sample(nrow(df2), nrow(df2), replace = TRUE))
+  train <- df2[ind, ]
+  test <- df2[-ind, ]
+  
+  phat2 <- matrix(0, nrow(test), B) #container
+  
+  for (j in 1:B) {
+    set.seed(j + 200)
+    ind <- sample(nrow(train), nrow(train), replace = TRUE)
+    tr <- train[ind, ]
+    
+    #Fully grown trees
+    model2 <- rpart(
+      expensive ~ .,
+      data = tr,
+      method = "class",
+      control = rpart.control(
+        minsplit = 2,
+        minbucket = 1,
+        cp = 0
+      )
+    )
+    phat2[, j] <- predict(model2, test, type = "prob")[, 2]
+  }
+  phat2 <- apply(phat2, 1, mean)
+  #AUC
+  pred_rocr <- prediction(phat2, test$expensive)
+  auc_ROCR <- performance(pred_rocr, measure = "auc")
+  AUC2[i] <- auc_ROCR@y.values[[1]] 
+}
+
+mean(AUC2)
+sqrt(var(AUC2)*n/(n-1))
+sd(AUC2)
+
+```
+
+
+```{r}
+plot(AUC2, col = "grey")
+abline(a=mean(AUC2), b=0, col = "red")
+```
+
+
+```{r}
+library(rattle)
+fancyRpartPlot(model2)
+
+```
+
+
+
+```{r}
+library(rpart.plot)
+prp(model2,type = 2, extra = 1, split.col = "red",
+    split.border.col = "blue", box.col = "pink")
+```
+
+```{r}
+
+# LPM
+
+train_ind <- sample(nrow(df2),nrow(df2)*0.9,replace = FALSE)
+train <- df2[train_ind,]
+val <- df2[-train_ind,]
+
+t = 100
+AUC3 <- c()
+
+for (i in 1:t) {
+  set.seed(i*15)
+  model3 <- lm(expensive ~ ., data = train,family = "binomial")
+  phat3 <- predict(model3, val)
+  phat3[phat3 < 0] <- 0
+  phat3[phat3 > 1] <- 1
+
+  # AUC (from ROCR)
+  phat3 <- data.frame(phat3, "Y" = val$expensive)
+  pred_rocr <- prediction(phat3[,1], phat3[,2])
+  auc_ROCR <- performance(pred_rocr, measure = "auc")
+  AUC3[i] <- auc_ROCR@y.values[[1]]
+}
+
+mean(AUC3)
+sqrt(var(AUC3)*n/(n-1))
+sd(AUC3)
+```
+
+
+```{r}
+# For classification,  bagging tends to work better than single tree like CART. Both of bagging and CART perform better than LPM. 
+```
+
+
+```{r}
+# B. Regression
+
+find <- which(sapply(df, is.factor))
+
+for (i in 1:length(find)) {
+  tabind <-table(df[,find[i]])
+  ind3 <- which(tabind < 10)
+  bad1 <- names(ind3)
+  
+  indbad1 <- which(df[,find[i]]%in% bad1)
+  if(length(indbad1) != 0) df <- df[-indbad1,]
+}
+```
+
+
+```{r}
+ind4 <- which(sapply(lapply(df,unique), length) == 1)
+df4 <- df[, -ind4]
+
+ind4 <- which(df4$MS_Zoning == "Floating_Village_Residential")
+df4 <- df4[-ind4, ]
+```
+
+
+```{r}
+# Single Tree
+
+n = 100
+
+# 100 Bootstrapping loops for using rpart 
+
+RMSPE1 <- c()
+
+for (i in 1:n) {
+  set.seed(i+2)
+  ind <- sample(nrow(df4), nrow(df4), replace = TRUE)
+  train <- df4[ind, ]
+  test <- df4[-ind, ]
+  
+  #pruned trees
+  model1 <- rpart(Sale_Price ~ ., data = train, method = "anova")
+  yhat1 <- predict(model1, test)
+  
+  #RMSPE
+  RMSPE1[i] <- sqrt(mean((test$Sale_Price - yhat1)^2))
+}
+mean(RMSPE1)
+sqrt(var(RMSPE1)*n/(n-1))
+sd(RMSPE1)
+```
+
+
+
+
+
+
+```{r}
+# Bagging model
+library(rpart)
+
+n = 100
+B = 10
+
+# 100 Bootstrapping loops
+RMSPE2 <- c()
+
+for (i in 1:n) {
+  set.seed(i * 15)
+  ind <- sample(nrow(df4), nrow(df4), replace = TRUE)
+  train <- df4[ind, ]
+  test <- df4[-ind, ]
+  
+  yhat2 <- matrix(0, nrow(test), B)
+  
+  for (j in 1:B) {
+    set.seed(j + 2)
+    ind <- sample(nrow(train), nrow(train), replace = TRUE)
+    tr <- train[ind, ]
+    
+    model2 <- rpart(
+      Sale_Price ~ .,
+      data = tr,
+      method = "anova",
+      control = rpart.control(
+        minsplit = 2,
+        minbucket = 1,
+        cp = 0          # unpruned tree
+      )
+    )
+    yhat2[, j] <- predict(model2, test)
+  }
+  yhat2 <- apply(yhat2, 1, mean)
+  RMSPE2[i] <- sqrt(mean((test$Sale_Price - yhat2) ^ 2))
+}
+mean(RMSPE2)
+sqrt(var(RMSPE2) * n / (n - 1))
+sd(RMSPE2)
+
+```
+
+
+```{r}
+#LPM
+#test/train split
+
+ind <- sample(nrow(df4), nrow(df4)*0.9)
+train <- df4[ind, ]
+test <- df4[-ind, ]
+
+
+# linear regression model on train set
+
+model3 <- lm(Sale_Price ~ ., data = train)
+yhat3 <- predict(model3, newdata = test)
+
+#RMSPE
+RMSPE3 <- sqrt(mean(test$Sale_Price- yhat3)^2)
+mean(RMSPE3)
+
+```
+
+```{r}
+# The lower the RMSPE, the better the prediction power. Mean(RMSPE) of Sale_Price by using single tree model is 38087.38, standard deviation of RMSPE is 1612. Mean(RMSPE) of Sale_Price by using Bagging is 26270.5 standard deviation of RMSPE is 1582.
+
+# Based on these figures, the fully grown tree model of Bagging has a lower mean RMSPE of Sale_Price （26270.5） compared to the single tree model of CART (38087). This suggests that the fully grown tree model performs better on average than the single tree model.
+
+# However, it is important to note that the standard deviation of RMSPE for the fully grown tree model of Bagging (2113.63) is slightly higher than that of the single tree model of CART (1582). This suggests that the fully grown tree model of Bagging may have slightly higher variance in its performance compared to the single tree model of CART.
+
+# The example of predicting power of Sale_Price may have an obvious linear relationship with other variables, therefore, in this case, the RMSPE from Linear model is significantly lower than others. 
+
+# When dealing with problems that involve significant nonlinearities and interactions, decision trees are often a suitable choice as they can produce intuitive and interpretable results. However, decision trees have been observed to be quite sensitive to the initial sample, meaning that models trained on one sample may not perform as well when applied to another sample in terms of predictive accuracy.
+
+```
+

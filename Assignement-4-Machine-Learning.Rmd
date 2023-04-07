@@ -1,0 +1,223 @@
+---
+title: "Assignment 4"
+author: "Qing Li"
+date: "2023-04-03"
+output: html_document
+---
+
+```{r}
+library(readr)
+winequality_white <- read_delim("winequality-white.csv", 
+    delim = ";", escape_double = FALSE, trim_ws = TRUE)
+```
+
+
+```{r}
+spec(winequality_white)
+show_col_types = FALSE
+
+```
+
+```{r}
+library(randomForest)
+library(rpart)
+library(ISLR)
+library(ROCR)
+```
+
+
+```{r}
+
+# Regreesion 
+
+df_white <- winequality_white
+df_white <- as.data.frame(df_white)
+colnames(df_white) <- gsub(" ", "_",colnames(df_white))
+
+n =30
+
+varIMP <- list()
+RMSPE_LM <- c()
+RMSPE_RF <- c()
+
+
+for (i in 1:n) {
+  ind <- sample(nrow(df_white), nrow(df_white), replace = TRUE)
+  train <- df_white[ind, ]  
+  val <- df_white[-ind, ]
+  model_LM <- lm(quality ~ ., data = train)
+  model_RF <- randomForest(quality ~ ., data = train)
+  
+  varIMP[[i]] <- model_RF$importance
+  
+  yhat_LM <- predict(model_LM, val)
+  yhat_RF <- predict(model_RF, val)
+  
+  RMSPE_LM <- sqrt(mean(val$quality - yhat_LM) ^ 2)
+  RMSPE_RF <- sqrt(mean(val$quality - yhat_RF) ^ 2)
+}
+```
+
+
+```{r}
+## Visualize the importance of the predictors
+varImpPlot(model_RF)
+
+```
+
+```{r}
+# Based on the variable importance plot, it appears that alcohol, density and volatile_acidity are the most important predictors to determine white wines quality.
+```
+
+
+```{r}
+## B.Classification problem
+
+df_white$quality_level <-
+  ifelse(df_white$quality <= 5,
+         "less-than-average",
+         "better-than-average")
+table(df_white$quality_level)
+ind_Quality <- which(colnames(df_white) == "quality")
+df_white_binary <- df_white[, -ind_Quality]
+
+```
+
+
+```{r}
+df_white_binary$quality_level <-
+  as.factor(df_white_binary$quality_level)
+```
+
+
+```{r}
+library(caret)
+library(ggplot2)
+library(lattice)
+n <- 30
+B <- 10
+AUC <- c()
+
+for (i in 1:n) {
+  ind <-
+    sample(nrow(df_white_binary), nrow(df_white_binary), replace = TRUE)
+  train2 <- df_white_binary[ind, ]
+  test2 <- df_white_binary[-ind, ]
+  
+  p = ncol(train2) - 1
+  model_RF2 <-
+    randomForest(quality_level ~ ., ntree = B, data = train2)
+  phat1 <- predict(model_RF2, test2, type = "prob")
+  
+  #AUC
+  pred_rocr <- prediction(phat1[, 2], test2$quality_level)
+  auc_ROCR <- performance(pred_rocr, measure = "auc")
+  AUC[i] <- auc_ROCR@y.values[[1]]
+}
+mean(AUC)
+plot(AUC, col = "pink")
+``` 
+
+
+
+
+```{r}
+# Interpretation
+
+varImpPlot(model_RF2)
+
+```
+
+
+
+```{r}
+library(readr)
+winequality_red <- read_delim("winequality/winequality-red.csv", 
+    delim = ";", escape_double = FALSE, trim_ws = TRUE)
+View(winequality_red)
+```
+
+
+```{r}
+ # Part 3
+
+df_white2 <- winequality_white
+df_white2 <- as.data.frame(df_white2) 
+df_red <- winequality_red
+df_red <- as.data.frame(df_red)
+white <- df_white2
+red<- df_red
+
+white$type <- 1
+red$type <- 0
+
+# add them together by the rows
+
+wineALL <- rbind(white,red)
+wineALL$quality<- as.factor(wineALL$quality)
+colnames(wineALL) <- gsub(" ", "_",colnames(wineALL))
+ 
+```
+
+
+```{r warning=FALSE}
+
+# Set number of iterations and initialize AUC vectors
+n <- 30
+AUC_LM <- c()
+AUC_RF <- c()
+varIMP2 <- list()
+
+# Loop through iterations
+for (i in 1:n) {
+  ind_combine <- sample(nrow(wineALL), nrow(wineALL), replace = TRUE)
+  train_combine <- wineALL[ind_combine, ]
+  test_combine <- wineALL[-ind_combine, ]
+  
+  # Fit logistic regression model and random forest model
+  model_LM_combine <- lm(type ~ ., data = train_combine)
+  model_RF_combine <- randomForest(type ~ ., data = train_combine, method = "rf")
+  
+  varIMP2[[i]] <- model_RF_combine$importance
+  
+  # Predict on test set using both models
+  phat_LM_combine <- predict(model_LM_combine, newdata = test_combine, type = "response")
+  phat_RF_combine <- predict(model_RF_combine, newdata = test_combine)
+  
+  # Compute AUC using ROCR package
+  pred_rocr_LM <- prediction(phat_LM_combine, test_combine$type)
+  auc_ROCR_LM <- performance(pred_rocr_LM, measure = "auc")
+  AUC_LM[i] <- auc_ROCR_LM@y.values[[1]]
+  
+  pred_rocr_RF <- prediction(phat_RF_combine, test_combine$type)
+  auc_ROCR_RF <- performance(pred_rocr_RF, measure = "auc")
+  AUC_RF[i] <- auc_ROCR_RF@y.values[[1]]
+}
+
+mean(AUC_LM)
+mean(AUC_RF)
+sd(AUC_LM)
+sd(AUC_RF)
+
+# Plot distribution of AUC values for logistic regression
+plot(AUC_LM, col = "pink", main = "Distribution of AUC Values for Logistic Regression")
+
+# Plot distribution of AUC values for random forest
+plot(AUC_RF, col = "blue", main = "Distribution of AUC Values for Random Forest")
+
+```
+
+```{r}
+## Based on the AUC values and standard deviation, I can see that the random forest model has better predictive power than the logistic regression model
+```
+
+```{r}
+varImpPlot(model_RF_combine)
+```
+
+```{r}
+# Based on the variable importance plot, it appears that chlorides, total_sulfur_dioxide and volatile_acidity are the most important predictors for classifying white and red wines.
+```
+
+
+

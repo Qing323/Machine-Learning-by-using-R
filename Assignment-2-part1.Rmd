@@ -1,0 +1,180 @@
+---
+title: "Assignment 2"
+author: "Qing Li"
+date: "2023-03-20"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r}
+url.train <- "http://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data"
+url.names <- "http://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.names"
+download.file(url.train, destfile = "adult_train.csv")
+download.file(url.names, destfile = "adult_names.txt")
+```
+
+```{r}
+## 1. Read the data file (.csv) and assign it to a data frame. Change the features’ names in your data frame with correct ones. See adult.names.txt and the website. (5)
+
+df <- read.csv("adult_train.csv", header = FALSE)
+
+```
+
+
+```{r}
+## 2. We will predict Incomelevel. Check if the distribution of categories is in balance or not. (5)
+
+varnames <- c("Age",
+              "WorkClass",
+              "fnlwgt",
+              "Education",
+              "EducationNum",
+              "MartialStatus",
+              "Occupation",
+              "Relationship",
+              "Race",
+              "Sex",
+              "CapitalGain",
+              "CapitalLoss",
+              "HourPerWeek",
+              "NativeCountry",
+              "IncomeLevel")
+
+
+```
+
+
+```{r}
+#3 b. Put variable name to the table replace the original name
+names(df) <- varnames
+```
+
+```{r}
+
+#3 2. We will predict Incomelevel. Check if the distribution of categories is in balance or not. (5)
+table_df <- table(df$IncomeLevel)
+table_df
+
+```
+
+```{r}
+
+## 3. There are multiple variables that are chr in the data. Correct their class type. (10) 
+str(df)
+
+```
+
+
+```{r}
+df[sapply(df, is.character)] <- lapply(df[sapply(df, is.character)], as.factor)
+str(df)
+```
+
+
+```{r}
+## 4. How many unique categories you have in NativeCountry? We have seen in A1 that too many categories would be an issue in training. Drop the category that has only one observation. (5)
+
+## count all values by how many times they occur, then drop the individual one 
+ind <- which(df$NativeCountry == " Holand-Netherlands")
+df <- df[-ind, ]
+anyNA(df)
+```
+
+## Question 2
+```{r}
+## 1. kNN requires scaled data. Scale (see scale()) only the numeric features. (5)
+ind2 <- sapply(df,is.numeric)
+df[ind2] <- lapply(df[ind2],scale)
+```
+
+
+```{r}
+##v2. Use a bootstrap cross-validation in training that predcits the test AUC 100 times. (it may take some time. Run your script at night). (50)
+
+## model, caret for KNN, ROCR for AUC
+library(caret)
+library(ROCR)
+
+```
+
+```{r}
+## parameters
+n = 3
+## containers
+AUC <- c()
+MAUC <- c()
+
+## Grid Search
+k <- seq(5, 50, 5)
+
+## for loop with 90 - 10 split:
+```
+
+```{r}
+
+MAUC <- c()
+
+for (s in 1:length(k)) {
+  AUC <- c()
+  
+  for (i in 1:n) {
+    
+    cat("loops: ", s, i,  "\r")
+    
+    ind <- unique(sample(nrow(df), nrow(df), replace = TRUE))
+    train <- df[ind,]
+    val <- df[-ind,]
+    
+    model <- knn3(IncomeLevel~., data = train, k = k[s])
+    phat <- predict(model, val, type = "prob")
+    
+    ## AUC
+    pred_rocr <- prediction(phat[, 2], val$IncomeLevel)
+    auc_ROCR <- performance(pred_rocr, measure = "auc")
+    AUC[i] <- auc_ROCR@y.values[[1]]
+  }
+  MAUC[s] <- mean(AUC)
+}
+
+```
+
+
+
+```{r}
+## 3. Report AUC’s in a plot that shows the average AUC and the 95% confidence 
+plot(k, MAUC, type = "l", col = "red")
+abline(v = k[which.max(MAUC)], col = "green", lwd=3)
+
+```
+
+
+
+```{r}
+results <- data.frame(k, MAUC)
+head(results)
+opt_k <- results[which.max(MAUC),]
+opt_k
+```
+
+```{r}
+# Calculate the confidence interval for the mean AUC
+conf_int <- t.test(MAUC)$conf.int
+conf_int
+# Plot the MAUC values and add the confidence interval
+plot(k, MAUC, col = "red", xlab = "k", ylab = "MAUC")
+lines(k, rep(mean(MAUC), length(k)), col = "green", lwd = 3)
+lines(k, rep(conf_int[1], length(k)), col = "blue", lty = "dashed", lwd = 2)
+lines(k, rep(conf_int[2], length(k)), col = "blue", lty = "dashed", lwd = 2)
+``` 
+
+
+
+
+```{r}
+## 4. Is kNN good? Compare it with LPM results. (10)
+
+## The code for LPM results is shown in Assignment2 part 2. After i run the MAUC from LPM results is 0.8961871, the result from KNN is 0.896396, therefore, KNN is not significantly better than LPM. 
+```
+
+
+

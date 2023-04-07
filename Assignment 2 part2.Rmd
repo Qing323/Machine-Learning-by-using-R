@@ -1,0 +1,129 @@
+---
+title: "LPM"
+author: "Qing Li"
+date: "2023-03-22"
+output: html_document
+---
+
+```{r}
+url.train <- "http://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data"
+url.names <- "http://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.names"
+download.file(url.train, destfile = "adult_train.csv")
+download.file(url.names, destfile = "adult_names.txt")
+```
+
+
+```{r}
+df <- read.csv("adult_train.csv", header = FALSE)
+varNames <- c("Age",
+              "WorkClass",
+              "fnlwgt",
+              "Education",
+              "EducationNum",
+              "MartialStatus",
+              "Occupation",
+              "Relationship",
+              "Race",
+              "Sex",
+              "CapitalGain",
+              "CapitalLoss",
+              "HourPerWeek",
+              "NativeCountry",
+              "IncomeLevel")
+names(df) <- varNames
+```
+
+```{r}
+table_df <- table(df$IncomeLevel)
+table_df
+```
+
+```{r}
+str(df)
+```
+
+```{r}
+ind <- which(df$NativeCountry==" Holand-Netherlands")
+data <- df[-ind, ]
+```
+
+
+```{r}
+df <- data
+#converting by a loop
+for (i in 1:ncol(df)) {
+  if(is.character(df[,i])) df[,i] <- as.factor(df[,i])
+}
+
+df <- data
+df[sapply(df, is.character)] <- lapply(df[sapply(df, is.character)],
+                                       as.factor)
+```
+
+
+```{r}
+#We need to have Y numeric with  0 and 1.
+#Our LPM calculates Pr(Y=1)
+data$Y <- ifelse(data$IncomeLevel==" <=50K", 0, 1)
+
+#Remove `IncomeLevel`
+data <- data[, -15]
+```
+
+
+```{r}
+
+library(ROCR)
+
+AUC <- c()
+t = 10 # number of times we loop
+
+for (i in 1:t) {
+  set.seed(i)
+  shuffle <- sample(nrow(data), nrow(data), replace = FALSE)
+  k <- 5
+  testind <- shuffle[1:(nrow(data) / k)]
+  trainind <- shuffle[-testind]
+  trdf <- data[trainind,] #80% of the data
+  tsdf <- data[testind,] #20% of data set a side
+
+  #LPM
+  model1 <- glm(Y ~ ., data = trdf, family = "gaussian")
+  phat <- predict(model1, tsdf)
+  phat[phat < 0] <- 0
+  phat[phat > 1] <- 1
+  
+  # ROC & AUC (from ROCR)
+  phat_df <- data.frame(phat, "Y" = tsdf$Y)
+  pred_rocr <- prediction(phat_df[, 1], phat_df[, 2])
+  
+  auc_ROCR <- performance(pred_rocr, measure = "auc")
+  AUC[i] <- auc_ROCR@y.values[[1]]
+}
+
+AUC[i]
+
+```
+
+```{r}
+plot(AUC, col = "grey")
+abline(a=mean(AUC), b=0, col = "red")
+```
+
+
+```{r}
+mean(AUC)
+```
+
+
+```{r}
+
+perf <- performance(pred_rocr,"tpr","fpr")
+plot(perf, colorize=TRUE)
+abline(a = 0, b = 1)
+```
+
+
+
+
+
